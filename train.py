@@ -51,8 +51,17 @@ vst_render.loadPlugin(args.plugin_file)
 nparams = vst_render.getPluginParameterSize()
 param_description = vst_render.getPluginParametersDescription()
 
+
 noise = generate_uniform_noise(1024)
-r = vst_render.renderAudio(noise)
+noise1 = noise.copy()
+noise2 = noise.copy()
+
+vst_render.setParams(((0, 0.5), (1, 0.5), (2, 0.5), (3, 0.5), (4, 0.5), (5, 0.0), (6, 0.5)))
+r = vst_render.renderAudio(noise1)
+
+vst_render.setParams(((0, 0.5), (1, 0.5), (2, 0.5), (3, 0.5), (4, 0.5), (5, 1.0), (6, 0.5)))
+r = vst_render.renderAudio(noise2)
+
 
 
 # if __name__ == '__main__':

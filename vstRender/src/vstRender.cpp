@@ -105,6 +105,10 @@ void vstRender::setParams (const PluginParams params) {
     }
 }
 
+const PluginParams vstRender::getParams() {
+    return pluginParameters;
+}
+
 void vstRender::fillAvailablePluginParameters (PluginParams& params) {
     params.clear();
     params.reserve (plugin->getNumParameters());

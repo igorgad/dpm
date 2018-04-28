@@ -21,6 +21,7 @@ public:
     const size_t getPluginParameterSize();
     const char* getPluginParametersDescription();
     void setParams (const PluginParams params);
+    const PluginParams getParams();
 
 private:
     void fillAvailablePluginParameters (PluginParams& params);

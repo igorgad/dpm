@@ -1,4 +1,11 @@
 %module vstRender
+
+%include <std_pair.i>
+%include <std_vector.i>
+%include <std_string.i>
+%template() std::pair<int,float>;
+%template(PluginParams) std::vector<std::pair<int,float> >;
+
 %{
 #define SWIG_FILE_WITH_INIT
 #include "vstRender.h"
