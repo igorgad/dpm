@@ -45,7 +45,7 @@ bool vstRender::loadPlugin (char *path) {
     return false;
 }
 
-float* vstRender::renderAudio (float* buffer) {
+const float* vstRender::renderAudio (float* buffer, int sampleLength) {
     juce::MidiBuffer midi;
     juce::AudioSampleBuffer outputBuffer(&buffer, plugin->getTotalNumOutputChannels(), bufferSize);
 
@@ -53,9 +53,13 @@ float* vstRender::renderAudio (float* buffer) {
         plugin->setParameter (parameter.first, parameter.second);
 
     plugin->prepareToPlay (sampleRate, bufferSize);
-    plugin->processBlock (outputBuffer, midi);
+    int numBuffers = std::ceil(sampleLength / bufferSize);
+    for (int b = 0; b < numBuffers; b++) {
+        juce::AudioSampleBuffer outputBuffer(&buffer, plugin->getTotalNumOutputChannels(), b * bufferSize, bufferSize);        
+        plugin->processBlock (outputBuffer, midi);    
+    }
 
-    return buffer;
+    return outputBuffer.getReadPointer(0);
 }
 
 const size_t vstRender::getPluginParameterSize() {

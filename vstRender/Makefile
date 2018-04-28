@@ -22,7 +22,7 @@ JUCE_CFLAGS += $(JUCE_CPPFLAGS) $(TARGET_ARCH) -fPIC -g -ggdb -O0 -fPIC $(CFLAGS
 JUCE_CXXFLAGS += $(JUCE_CFLAGS) -std=c++11 $(CXXFLAGS)
 JUCE_LDFLAGS += $(TARGET_ARCH) -L/opt/anaconda3/lib -L$(JUCE_BINDIR) -L$(JUCE_LIBDIR) $(shell pkg-config --libs alsa freetype2 libcurl x11 xext xinerama) -shared -lpython3.6m -lGL -ldl -lpthread -lrt $(LDFLAGS)
 
-CLEANCMD = rm -rf vstRender.py ./src/vstRender_wrap.cpp _vstRender.so $(JUCE_OUTDIR)/$(TARGET) $(JUCE_OBJDIR)
+CLEANCMD = rm -rf ./src/vstRender.py ./src/vstRender_wrap.cpp _vstRender.so $(JUCE_OUTDIR)/$(TARGET) $(JUCE_OBJDIR)
 
 OBJECTS_DYNAMIC_LIBRARY := \
   $(JUCE_OBJDIR)/vstRender.o \
@@ -49,7 +49,7 @@ swig:
 	$(SWIG) -c++ -python -outdir . -o ./src/vstRender_wrap.cpp ./src/vstRender.i
 
 $(JUCE_OUTDIR)/$(JUCE_TARGET_DYNAMIC_LIBRARY) : check-pkg-config $(OBJECTS_DYNAMIC_LIBRARY) $(RESOURCES)
-	@echo Linking "RenderMan - Dynamic Library"
+	@echo Linking "vstRender - Dynamic Library"
 	g++ -o $(JUCE_OUTDIR)/$(JUCE_TARGET_DYNAMIC_LIBRARY) $(OBJECTS_DYNAMIC_LIBRARY) $(JUCE_LDFLAGS) $(JUCE_LDFLAGS_DYNAMIC_LIBRARY) $(RESOURCES) $(TARGET_ARCH)
 	cp $(JUCE_OUTDIR)/$(JUCE_TARGET_DYNAMIC_LIBRARY) .
 

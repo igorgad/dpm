@@ -16,7 +16,7 @@ public:
     ~vstRender();
 
     bool loadPlugin (char *path);
-    float* renderAudio (float *input);
+    const float* renderAudio (float *buffer, int sampleLength);
 
     const size_t getPluginParameterSize();
     const char* getPluginParametersDescription();
