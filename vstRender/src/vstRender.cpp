@@ -46,8 +46,7 @@ bool vstRender::loadPlugin (char *path) {
 }
 
 const float* vstRender::renderAudio (float* buffer, int sampleLength) {
-    juce::MidiBuffer midi;
-    juce::AudioSampleBuffer outputBuffer(&buffer, plugin->getTotalNumOutputChannels(), bufferSize);
+    juce::MidiBuffer midi;    
 
     for (const auto& parameter : pluginParameters)
         plugin->setParameter (parameter.first, parameter.second);
@@ -59,6 +58,7 @@ const float* vstRender::renderAudio (float* buffer, int sampleLength) {
         plugin->processBlock (outputBuffer, midi);    
     }
 
+    juce::AudioSampleBuffer outputBuffer(&buffer, plugin->getTotalNumOutputChannels(), 0, sampleLength);
     return outputBuffer.getReadPointer(0);
 }
 
@@ -76,9 +76,11 @@ const char* vstRender::getPluginParametersDescription() {
             ss << std::setw (3) << std::setfill (' ') << pair.first;
 
             const String name = plugin->getParameterName (pair.first);
+            const String val (plugin->getParameterDefaultValue (pair.first));
+            const String steps (plugin->getParameterNumSteps (pair.first));
             const String index (ss.str());
 
-            parameterListString = parameterListString + index + ": " + name + "\n";
+            parameterListString = parameterListString + index + ":" + name + ":" + val + ':' + steps + "\n";
 
             ss.str ("");
             ss.clear();
@@ -118,7 +120,7 @@ void vstRender::fillAvailablePluginParameters (PluginParams& params) {
         // Ensure the parameter is not unused.
         if (plugin->getParameterName(i) != "Param") {
             ++usedParameterAmount;
-            params.push_back (std::make_pair (i, 0.0f));
+            params.push_back (std::make_pair (i, plugin->getParameterDefaultValue(i)));
         }
     }
     params.shrink_to_fit();

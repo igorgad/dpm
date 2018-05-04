@@ -2,66 +2,81 @@
 
 import tensorflow as tf
 import numpy as np
-import pandas as pd
 import vstRender.vstRender as vr
 import matplotlib.pyplot as plt
+import time
+
+import models.dnn as md
 
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('plugin_file', type=str, default=[], help='plugin to model')
-parser.add_argument('--batch_size', default=100, type=int, help='batch size')
-parser.add_argument('--train_steps', default=1000, type=int, help='number of training steps')
+parser.add_argument('record_file', type=str, default='./records.tfrecord', help='tf record file to use')
+parser.add_argument('--plugin_file', type=str, default=[], help='plugin to extract features. Must match the plugin used to generate the tfrecord file')
+parser.add_argument('--logdir', default='./logs', type=str, help='directory to log')
+parser.add_argument('--batch_size', default=32, type=int, help='batch size')
+parser.add_argument('--train_steps', default=500000, type=int, help='number of training steps')
+
+parser.add_argument('--fft_length', default=510, type=int, help='fft length')
+parser.add_argument('--fft_step', default=512, type=int, help='fft step')
+parser.add_argument('--fft_frame_length', default=1024, type=int, help='fft frame length in samples')
 
 
-def compute_log_spectogram(signals, log_offset=1e-6):
-    stfts = tf.contrib.signal.stft(signals, frame_length=1024, frame_step=512, fft_length=1024)
-    mag = tf.abs(stfts)
-    return tf.log(mag + log_offset)
+def parse_features_and_decode(tf_example, features):
+    parsed_features = tf.parse_single_example(tf_example, features)
+    parsed_features['samples'] = tf.decode_raw(parsed_features['samples'], tf.float32)
+    parsed_features['l_samples'] = tf.decode_raw(parsed_features['l_samples'], tf.float32)
+    return parsed_features
 
 
-def generate_pink_noise(sample_length, ncols=16):
-    array = np.empty((sample_length, ncols))
-    array.fill(np.nan)
-    array[0, :] = np.random.random(ncols)
-    array[:, 0] = np.random.random(sample_length)
-
-    # the total number of changes is nrows
-    n = sample_length
-    cols = np.random.geometric(0.5, n)
-    cols[cols >= ncols] = 0
-    rows = np.random.randint(sample_length, size=n)
-    array[rows, cols] = np.random.random(n)
-
-    df = pd.DataFrame(array)
-    df.fillna(method='ffill', axis=0, inplace=True)
-    total = df.sum(axis=1)
-
-    return np.float32(total.values)
+def prepare_examples(parsed_features):
+    return parsed_features, tf.reshape(parsed_features['l_samples'], [-1])
 
 
-def generate_uniform_noise(sample_length):
-    return np.random.rand(sample_length).astype(np.float32)
+def input_fn(dataset_file, dataset_features, batch_size):
+    tfdataset = tf.data.TFRecordDataset(dataset_file)
+    tfdataset = tfdataset.map(lambda feat: parse_features_and_decode(feat, dataset_features), num_parallel_calls=4)
+    # tfdataset = tfdataset.map(lambda feat: compute_stft_feature(feat, args.fft_frame_length, args.fft_step, args.fft_length), num_parallel_calls=4)
+    tfdataset = tfdataset.map(prepare_examples, num_parallel_calls=4).batch(batch_size)
+    return tfdataset.make_one_shot_iterator().get_next()
 
 
-args = parser.parse_args('/usr/lib/vst/ZamTube-vst.so'.split())
+args = parser.parse_args('/home/pepeu/workspace/Dataset/dpm_10240.tfrecord --plugin_file /usr/lib/vst/ZamEQ2-vst.so'.split())
+args.audio_samples = int(args.record_file.split('/')[-1].split('.')[0].split('_')[-1])
 vst_render = vr.vstRender(44100, 1024)
 vst_render.loadPlugin(args.plugin_file)
 
 nparams = vst_render.getPluginParameterSize()
-param_description = vst_render.getPluginParametersDescription()
+params_description = vst_render.getPluginParametersDescription()
+params_description = [[int(i.split(':')[0]), i.split(':')[1].replace(' ',''), float(i.split(':')[2]), int(i.split(':')[3])] for i in params_description.split('\n')[:-1]]
 
+stft_shape = [args.audio_samples // args.fft_step - 1, args.fft_length // 2 + 1]
+stft_size = int(np.prod(stft_shape))
 
-noise = generate_uniform_noise(1024)
-noise1 = noise.copy()
-noise2 = noise.copy()
+dataset_features = {'samples': tf.FixedLenFeature([], tf.string), 'l_samples': tf.FixedLenFeature([], tf.string)}
+feature_columns = [tf.feature_column.numeric_column(key='stfts/mag', shape=stft_shape)]
+for p in range(nparams):
+    dataset_features[params_description[p][1]] = tf.FixedLenFeature([], tf.float32)
+    feature_columns.append(tf.feature_column.numeric_column(key=params_description[p][1], shape=(1,)))
 
-vst_render.setParams(((0, 0.5), (1, 0.5), (2, 0.5), (3, 0.5), (4, 0.5), (5, 0.0), (6, 0.5))) # OUTPUT = 0
-r = vst_render.renderAudio(noise1)
+# model = tf.estimator.DNNRegressor(feature_columns=feature_columns,
+#                                   hidden_units=[stft_size, stft_size],
+#                                   label_dimension=stft_size,
+#                                   model_dir=args.logdir)
 
-vst_render.setParams(((0, 0.5), (1, 0.5), (2, 0.5), (3, 0.5), (4, 0.5), (5, 1.0), (6, 0.5))) # OUTPUT = 1
-r = vst_render.renderAudio(noise2)
+model = tf.estimator.Estimator(
+    model_fn=md.model_func,
+    model_dir=args.logdir,
+    params={'feature_columns': feature_columns,
+            'hidden_units': [stft_size, stft_size],
+            'frame_length': args.fft_frame_length,
+            'frame_step': args.fft_step,
+            'fft_length': args.fft_length,
+            'fft_nblocks': stft_shape[0],
+            'label_size': stft_size})
 
+model.train(input_fn=lambda: input_fn(args.record_file, dataset_features, args.batch_size), steps=args.train_steps)
+pred = model.predict(input_fn=lambda: input_fn(args.record_file, dataset_features, args.batch_size))
 
 
 # if __name__ == '__main__':
