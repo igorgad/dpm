@@ -13,7 +13,7 @@ parser.add_argument('plugin_file', type=str, default=[], help='plugin to model')
 parser.add_argument('--audio_file', default=[], type=str, help='audio file to create examples')
 parser.add_argument('--outfile', default='./records.tfrecord', type=str, help='tfrecord file to create')
 parser.add_argument('--audio_samples', default=10240, type=int, help='duration of audio in samples for each example')
-parser.add_argument('--nexamples', default=10000, type=int, help='number of examples')
+parser.add_argument('--nexamples', default=10, type=int, help='number of examples')
 parser.add_argument('--use_pink_noise', default=False, type=bool, help='use pink noise instead of uniform noise')
 
 
@@ -58,8 +58,8 @@ def generate_uniform_noise(batch_size, sample_length):
 
 def generate_from_audio(audio_file, samples_length):
     audio_binary = tf.read_file(audio_file)
-    waveform = tf.contrib.ffmpeg.decode_audio(audio_binary, channel_count=1)
-    waveform = tf.contrib.signal.frame(waveform, samples_length, samples_length // 2)
+    waveform = tf.reduce_mean(tf.contrib.ffmpeg.decode_audio(audio_binary, file_format='wav', samples_per_second=44100, channel_count=2), axis=1)
+    waveform = tf.contrib.signal.frame(waveform, samples_length, samples_length)
     return waveform
 
 
@@ -80,7 +80,7 @@ def vst_process_samples(params):
     return samples
 
 
-args = parser.parse_args('/usr/lib/vst/ZamEQ2-vst.so --outfile /home/pepeu/workspace/DOC/Dataset/dpm.tfrecord'.split())
+args = parser.parse_args('/usr/lib/vst/ZamEQ2-vst.so --audio_file ./music.wav --outfile /home/pepeu/workspace/Dataset/dpm_music.tfrecord'.split())
 args.outfile = args.outfile.replace('.tfrecord', '_%d.tfrecord' % args.audio_samples)
 
 pool = multiprocessing.Pool(initializer=init_vst, initargs=(44100,512, args.plugin_file), processes=pool_size)
@@ -96,33 +96,40 @@ writer = tf.python_io.TFRecordWriter(args.outfile)
 sess = tf.Session()
 
 if args.audio_file:
+    print ('Using audio file to create examples...')
     try:
-        label_samples = sess.run(generate_from_audio(args.audio_file, args.audio_samples))
-        process_batch = label_samples.shape[0]
-        samples = label_samples.copy()
-        pval = np.random.random([process_batch, nparams])
-        pidx = np.arange(nparams)
+        for ex in range(args.nexamples):
+            st = time.time()
 
-        params = []
-        for b in range(process_batch):
-            params.append([samples[b, :], pidx, pval[b, :]])
+            label_samples = sess.run(generate_from_audio(args.audio_file, args.audio_samples))
+            process_batch = label_samples.shape[0] // 4
+            samples = label_samples.copy()
+            pval = np.random.random([nparams])
+            pidx = np.arange(nparams)
 
-        samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
+            params = []
+            for b in range(process_batch):
+                params.append([samples[b, :], pidx, pval])
 
-        features = {}
-        for b in range(process_batch):
-            # features['audio_length'] = int64_feature(args.audio_samples)
-            features['samples'] = bytes_feature(samples[b, :].tostring())
-            features['l_samples'] = bytes_feature(label_samples[b, :].tostring())
-            for p in enumerate(params_description):
-                features[p[1][1]] = floats_feature(pval[b, p[0]])
+            samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
 
-            tf_example = tf.train.Example(features=tf.train.Features(feature=features))
-            writer.write(tf_example.SerializeToString())
+            features = {}
+            for b in range(process_batch):
+                # features['audio_length'] = int64_feature(args.audio_samples)
+                features['samples'] = bytes_feature(samples[b, :].tostring())
+                features['l_samples'] = bytes_feature(label_samples[b, :].tostring())
+                for p in enumerate(params_description):
+                    features[p[1][1]] = floats_feature(pval[p[0]])
+
+                tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+                writer.write(tf_example.SerializeToString())
+
+            print('processed step ex: ' + str(ex) + ' from ' + str(args.nexamples) + ' in ' + str(time.time() - st))
     finally:
         writer.close()
 
 else:
+    print('Generating examples from noise...')
     try:
         for ex in range(args.nexamples // process_batch):
             st = time.time()
