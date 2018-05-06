@@ -10,6 +10,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('plugin_file', type=str, default=[], help='plugin to model')
+parser.add_argument('--audio_file', default=[], type=str, help='audio file to create examples')
 parser.add_argument('--outfile', default='./records.tfrecord', type=str, help='tfrecord file to create')
 parser.add_argument('--audio_samples', default=10240, type=int, help='duration of audio in samples for each example')
 parser.add_argument('--nexamples', default=10000, type=int, help='number of examples')
@@ -55,6 +56,13 @@ def generate_uniform_noise(batch_size, sample_length):
     return np.random.random([batch_size,sample_length]).astype(np.float32) - 0.5
 
 
+def generate_from_audio(audio_file, samples_length):
+    audio_binary = tf.read_file(audio_file)
+    waveform = tf.contrib.ffmpeg.decode_audio(audio_binary, channel_count=1)
+    waveform = tf.contrib.signal.frame(waveform, samples_length, samples_length // 2)
+    return waveform
+
+
 def init_vst(sr, bf, plugin_file):
     global vst
     vst = vr.vstRender(sr, bf)
@@ -85,19 +93,19 @@ params_description = [[int(i.split(':')[0]), i.split(':')[1].replace(' ', ''), f
                       for i in params_description.split('\n')[:-1]]
 
 writer = tf.python_io.TFRecordWriter(args.outfile)
-try:
+sess = tf.Session()
 
-    for ex in range(args.nexamples // process_batch):
-        st = time.time()
-
-        label_samples = generate_uniform_noise(process_batch, args.audio_samples)
+if args.audio_file:
+    try:
+        label_samples = sess.run(generate_from_audio(args.audio_file, args.audio_samples))
+        process_batch = label_samples.shape[0]
         samples = label_samples.copy()
         pval = np.random.random([process_batch, nparams])
         pidx = np.arange(nparams)
 
         params = []
         for b in range(process_batch):
-            params.append([samples[b,:], pidx, pval[b,:]])
+            params.append([samples[b, :], pidx, pval[b, :]])
 
         samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
 
@@ -107,12 +115,41 @@ try:
             features['samples'] = bytes_feature(samples[b, :].tostring())
             features['l_samples'] = bytes_feature(label_samples[b, :].tostring())
             for p in enumerate(params_description):
-                features[p[1][1]] = floats_feature(pval[b,p[0]])
+                features[p[1][1]] = floats_feature(pval[b, p[0]])
 
             tf_example = tf.train.Example(features=tf.train.Features(feature=features))
             writer.write(tf_example.SerializeToString())
+    finally:
+        writer.close()
 
-        print('processed step ex: ' + str(ex) + ' from ' + str(args.nexamples // process_batch) + ' in ' + str(time.time() - st))
+else:
+    try:
+        for ex in range(args.nexamples // process_batch):
+            st = time.time()
 
-finally:
-    writer.close()
+            label_samples = generate_uniform_noise(process_batch, args.audio_samples)
+            samples = label_samples.copy()
+            pval = np.random.random([process_batch, nparams])
+            pidx = np.arange(nparams)
+
+            params = []
+            for b in range(process_batch):
+                params.append([samples[b,:], pidx, pval[b,:]])
+
+            samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
+
+            features = {}
+            for b in range(process_batch):
+                # features['audio_length'] = int64_feature(args.audio_samples)
+                features['samples'] = bytes_feature(samples[b, :].tostring())
+                features['l_samples'] = bytes_feature(label_samples[b, :].tostring())
+                for p in enumerate(params_description):
+                    features[p[1][1]] = floats_feature(pval[b,p[0]])
+
+                tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+                writer.write(tf_example.SerializeToString())
+
+            print('processed step ex: ' + str(ex) + ' from ' + str(args.nexamples // process_batch) + ' in ' + str(time.time() - st))
+
+    finally:
+        writer.close()

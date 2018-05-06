@@ -41,6 +41,14 @@ def input_fn(dataset_file, dataset_features, batch_size):
     return tfdataset.make_one_shot_iterator().get_next()
 
 
+def audio_input_fn(audio_file, audio_samples, dataset_features, batch_size):
+    audio_binary = tf.read_file(audio_file)
+    waveform = tf.contrib.ffmpeg.decode_audio(audio_binary, file_format='mp3', samples_per_second=44100, channel_count=1)
+    waveform = tf.contrib.signal.frame(waveform, audio_samples, audio_samples // 2)
+    tdata = tf.data.Dataset.from_tensor_slices(waveform)
+
+
+
 args = parser.parse_args('/home/pepeu/workspace/Dataset/dpm_10240.tfrecord --plugin_file /usr/lib/vst/ZamEQ2-vst.so'.split())
 args.audio_samples = int(args.record_file.split('/')[-1].split('.')[0].split('_')[-1])
 vst_render = vr.vstRender(44100, 1024)
