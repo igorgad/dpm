@@ -12,8 +12,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('plugin_file', type=str, default=[], help='plugin to model')
 parser.add_argument('--audio_file', default=[], type=str, help='audio file to create examples')
 parser.add_argument('--outfile', default='./records.tfrecord', type=str, help='tfrecord file to create')
-parser.add_argument('--audio_samples', default=10240, type=int, help='duration of audio in samples for each example')
-parser.add_argument('--nexamples', default=10, type=int, help='number of examples')
+parser.add_argument('--audio_samples', default=5120, type=int, help='duration of audio in samples for each example')
+parser.add_argument('--nexamples', default=100000, type=int, help='number of examples')
 parser.add_argument('--use_pink_noise', default=False, type=bool, help='use pink noise instead of uniform noise')
 
 
@@ -80,6 +80,7 @@ def vst_process_samples(params):
     return samples
 
 
+# args = parser.parse_args('/usr/lib/vst/ZamEQ2-vst.so --outfile /home/pepeu/workspace/Dataset/dpm.tfrecord'.split())
 args = parser.parse_args('/usr/lib/vst/ZamEQ2-vst.so --audio_file ./music.wav --outfile /home/pepeu/workspace/Dataset/dpm_music.tfrecord'.split())
 args.outfile = args.outfile.replace('.tfrecord', '_%d.tfrecord' % args.audio_samples)
 
@@ -97,27 +98,28 @@ sess = tf.Session()
 
 if args.audio_file:
     print ('Using audio file to create examples...')
+    args.nexamples = args.nexamples // process_batch
     try:
         for ex in range(args.nexamples):
             st = time.time()
 
-            label_samples = sess.run(generate_from_audio(args.audio_file, args.audio_samples))
-            process_batch = label_samples.shape[0] // 4
-            samples = label_samples.copy()
+            input_samples = sess.run(generate_from_audio(args.audio_file, args.audio_samples))
+            process_batch = input_samples.shape[0] // 4
+            vst_samples = input_samples.copy()
             pval = np.random.random([nparams])
             pidx = np.arange(nparams)
 
             params = []
             for b in range(process_batch):
-                params.append([samples[b, :], pidx, pval])
+                params.append([vst_samples[b, :], pidx, pval])
 
-            samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
+            vst_samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
 
             features = {}
             for b in range(process_batch):
                 # features['audio_length'] = int64_feature(args.audio_samples)
-                features['samples'] = bytes_feature(samples[b, :].tostring())
-                features['l_samples'] = bytes_feature(label_samples[b, :].tostring())
+                features['vst_samples'] = bytes_feature(vst_samples[b, :].tostring())
+                features['input_samples'] = bytes_feature(input_samples[b, :].tostring())
                 for p in enumerate(params_description):
                     features[p[1][1]] = floats_feature(pval[p[0]])
 
@@ -134,22 +136,22 @@ else:
         for ex in range(args.nexamples // process_batch):
             st = time.time()
 
-            label_samples = generate_uniform_noise(process_batch, args.audio_samples)
-            samples = label_samples.copy()
+            input_samples = generate_uniform_noise(process_batch, args.audio_samples)
+            vst_samples = input_samples.copy()
             pval = np.random.random([process_batch, nparams])
             pidx = np.arange(nparams)
 
             params = []
             for b in range(process_batch):
-                params.append([samples[b,:], pidx, pval[b,:]])
+                params.append([vst_samples[b,:], pidx, pval[b,:]])
 
-            samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
+            vst_samples = np.array(pool.map(vst_process_samples, params)).astype(np.float32)
 
             features = {}
             for b in range(process_batch):
                 # features['audio_length'] = int64_feature(args.audio_samples)
-                features['samples'] = bytes_feature(samples[b, :].tostring())
-                features['l_samples'] = bytes_feature(label_samples[b, :].tostring())
+                features['vst_samples'] = bytes_feature(vst_samples[b, :].tostring())
+                features['input_samples'] = bytes_feature(input_samples[b, :].tostring())
                 for p in enumerate(params_description):
                     features[p[1][1]] = floats_feature(pval[b,p[0]])
 
