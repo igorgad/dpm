@@ -30,7 +30,7 @@ class Plugin():
         self.params_description = [[int(i.split(':')[0]), i.split(':')[1].replace(' ', ''), float(i.split(':')[2]), int(i.split(':')[3])]
                               for i in self.params_description.split('\n')[:-1]]
 
-    def ___vst_process_samples(self, samples, params):
+    def __vst_process_samples(self, samples, params):
         """where the actual audio processing call happens (private method)"""
         pidx = params[0]    # list of knob numbers
         pval = params[1]    # list of knob settings for each knob
