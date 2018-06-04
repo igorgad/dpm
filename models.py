@@ -40,17 +40,18 @@ def dnn(features, labels, mode, params):
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=features)
 
-    average_loss = tf.losses.sigmoid_cross_entropy(features['vst_stfts/mag'], features['predicted_stfts/mag'])
-    # sigma = tf.Variable(10.0, trainable=True)
+    average_loss = tf.losses.absolute_difference(features['vst_stfts/mag'], features['predicted_stfts/mag'])
+    # average_loss = tf.losses.sigmoid_cross_entropy(features['vst_stfts/mag'], features['predicted_stfts/mag'])
+    # sigma = tf.Variable(1.0, trainable=True)
     # average_loss = ITL.correntropy_loss(features['vst_stfts/mag'], features['predicted_stfts/mag'], sigma=sigma)
-    rmse = tf.metrics.root_mean_squared_error(features['vst_stfts/mag'], features['predicted_stfts/mag'])
+    rmse = tf.metrics.mean_squared_error(features['vst_stfts/mag'], features['predicted_stfts/mag'])
     total_loss = tf.to_float(params['batch_size']) * average_loss
 
     tf.summary.histogram('outdnn', output_layer)
     tf.summary.image('predicted_stfts/mag', tf.expand_dims(features['predicted_stfts/mag'], axis=3))
     tf.summary.image('vst_stfts/mag', tf.expand_dims(features['vst_stfts/mag'], axis=3))
     tf.summary.scalar('rmse', rmse[1])
-    tf.summary.scalar('sigma', sigma)
+    # tf.summary.scalar('sigma', sigma)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         optimizer = tf.train.AdamOptimizer(learning_rate=params['lr'])
@@ -89,7 +90,9 @@ def mb_conv2d(features, labels, mode, params):
     # DNN NETWORK (CALCULATE CNN FILTERS FROM VST PARAMS)
     topdnn = tf.feature_column.input_layer(features, params['feature_columns'])
     for units in dnn_hidden_units:
-        topdnn = tf.layers.dense(inputs=topdnn, units=units, activation=tf.nn.leaky_relu)
+        topdnn = tf.layers.dense(inputs=topdnn, units=units, use_bias=False)
+        topdnn = tf.layers.batch_normalization(topdnn, center=True, scale=False)
+        topdnn = tf.nn.leaky_relu(topdnn)
     outdnn = tf.layers.dense(inputs=topdnn, units=dnn_output_size)
     conv_filters = tf.split(outdnn, [np.prod(k) for k in cnn_filter_sizes], axis=1)
 
@@ -131,7 +134,7 @@ def mb_conv2d(features, labels, mode, params):
     tf.summary.image('predicted_stfts/mag', tf.expand_dims(features['predicted_stfts/mag'], axis=3))
     tf.summary.image('vst_stfts/mag', tf.expand_dims(features['vst_stfts/mag'], axis=3))
     tf.summary.scalar('rmse', rmse[1])
-    tf.summary.scalar('sigma', sigma)
+    # tf.summary.scalar('sigma', sigma)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         optimizer = tf.train.AdamOptimizer(learning_rate=params['lr'])

@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('record_file', type=str, default='./records.tfrecord', help='tf record file to train')
 parser.add_argument('--audio_record_file', type=str, default=[], help='tf record file to evaluate (with real audio samples')
 parser.add_argument('--plugin_file', type=str, default=[], help='plugin to extract features. Must match the plugin used to generate the tfrecord file')
-parser.add_argument('--logdir', default='./logs/dnn', type=str, help='directory to log')
+parser.add_argument('--logdir', default='./logs/dnn_absdif', type=str, help='directory to log')
 parser.add_argument('--batch_size', default=4, type=int, help='batch size')
 parser.add_argument('--train_steps', default=500000, type=int, help='number of training steps')
 
@@ -56,7 +56,7 @@ nparams = vst_render.getPluginParameterSize()
 params_description = vst_render.getPluginParametersDescription()
 params_description = [[int(i.split(':')[0]), i.split(':')[1].replace(' ',''), float(i.split(':')[2]), int(i.split(':')[3])] for i in params_description.split('\n')[:-1]]
 
-bucket_boundaries = np.arange(0.0, 1.0, 0.025).tolist()
+bucket_boundaries = np.arange(0.0, 1.0, 0.01).tolist()
 
 dataset_features = {'input_samples': tf.FixedLenFeature([], tf.string), 'vst_samples': tf.FixedLenFeature([], tf.string)}
 feature_columns = []
