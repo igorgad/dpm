@@ -30,23 +30,18 @@ class Plugin():
         self.params_description = [[int(i.split(':')[0]), i.split(':')[1].replace(' ', ''), float(i.split(':')[2]), int(i.split(':')[3])]
                               for i in self.params_description.split('\n')[:-1]]
 
-    def __vst_process_samples(self, samples, params):
-        """where the actual audio processing call happens (private method)"""
-        pidx = params[0]    # list of knob numbers
-        pval = params[1]    # list of knob settings for each knob
+    def run(self, samples, params):
+        """where the actual audio processing call happens"""
+        pidx = params[0]    # list of parameter ('knob') indices
+        pval = params[1]    # list of settings for each parameter
 
-        # match param numbers with param values
+        # match param indices with param values
         parg = tuple([(int(i), float(j)) for i, j in zip(pidx, pval)])
 
         self.vst.setParams(parg)       # set plugin parameters
         audio = samples.copy()         # renderAudio operates 'in place', so make a copy
         self.vst.renderAudio(audio)
-        return audio
-
-    def run(self, audio_in, params):
-        """call the plugin to apply to the audio"""
-        audio_out = self.__vst_process_samples(audio_in, params).astype(np.float32)
-        return audio_out
+        return audio.astype(np.float32)
 
 
 if __name__ == '__main__':
